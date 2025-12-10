@@ -1,22 +1,120 @@
-// Raptor Todo Hub Card
-// Carte multi-listes pour entités todo.* (courses, tâches, etc.)
-// - Catégories par liste (courses / tâches)
-// - Sélecteur de catégorie sous le champ d'ajout
-// - Icône cliquable au lieu de case à cocher, avec couleur ON/OFF par catégorie
-// - Catégorie par défaut (default_category)
-// - Suppression auto des tâches complétées après un délai par liste
-//   -> durée & heure de départ stockées dans le summary via tag #rtrm(start,delay)
-//   -> fonctionne même après redémarrage HA / reload / autre appareil
-// - Barre de progression par onglet, avec couleur selon % (configurable)
-// - Mode de couleur "category" ou "urgency_age" (ancienneté + urgence)
-// - Presets de catégories : grocery / urgency / rooms / timeframe
-// - tab_color_mode: progress | severity | mixed
-// - show_progress_bar: true | false
-// - onglet actif mis en avant (bord plus épais + ombre)
-// - title_mode: "static" | "per_list" (titre dynamique par liste)
-// - language: "en" | "fr" | "de" | "es" (par défaut: "en")
-//   -> les presets utilisent labels.{en,fr,de,es}
-// - Appui long sur un item -> confirmation de suppression manuelle
+/* 
+   -------------------------------------------------------------------------
+   Raptor Todo Hub Card - by Inter-Raptor (Vivien Jardot)
+   -------------------------------------------------------------------------
+   Custom Lovelace card for Home Assistant.
+
+   Multi-list todo hub:
+   - One card, multiple todo.* lists (grocery, home, personal tasks, etc.)
+   - Category presets: grocery / urgency / rooms / timeframe
+   - Category chips under the input field (auto-tagging with short labels)
+   - Optional default_category per list
+
+   Visual & UX:
+   - Tabs for each list, with:
+     - Progress bar (done / total) and color by percentage
+     - Color mode per list: "category" or "urgency_age"
+     - Tab color mode: progress | severity | mixed
+   - Active tab is highlighted (thicker border + shadow)
+   - Category pills on each task (label + color)
+
+   Smart behaviour:
+   - Auto-remove completed tasks after a per-list delay
+     -> Delay & start time are stored in the item summary via tag:
+        #rtrm(start,delay)
+     -> Works across HA restarts / reloads / other devices
+   - Long-press on an item:
+     -> Confirmation dialog
+     -> Manual deletion if confirmed
+   - Click on the icon:
+     -> Toggle between active / completed
+
+   Internationalization:
+   - Built-in labels for EN / FR / DE / ES
+   - Presets are localized (category names per language)
+   - language: "en" | "fr" | "de" | "es" (default: "en")
+
+   Typical Lovelace usage:
+
+   type: custom:raptor-todo-hub-card
+   language: fr
+   title: Tâches & courses – Démo
+   title_mode: per_list
+   lists:
+     # 1) Grocery list with presets "grocery"
+     - entity: todo.courses_demo
+       label: Courses démo
+       icon: mdi:cart
+       preset: grocery
+       default_category: fruits_legumes
+       color_mode: category
+       tab_color_mode: progress
+       show_progress_bar: true
+       auto_remove_completed_seconds: 86400
+
+     # 2) Personal / admin tasks with urgency mode
+     - entity: todo.taches_myriam_demo
+       label: Tâches Myriam démo
+       icon: mdi:account-heart
+       preset: urgency
+       color_mode: urgency_age
+       tab_color_mode: mixed
+       show_progress_bar: true
+       auto_remove_completed_seconds: 0
+       urgency_warning_color: "#f97316"
+       urgency_overdue_color: "#ef4444"
+
+     # 3) House chores by room
+     - entity: todo.maison_demo
+       label: Maison démo
+       icon: mdi:home-wrench
+       preset: rooms
+       color_mode: category
+       tab_color_mode: mixed
+       show_progress_bar: false
+       auto_remove_completed_seconds: 0
+
+   Author  : Inter-Raptor (Vivien Jardot)
+   Version : 1.0.0
+   -------------------------------------------------------------------------
+*/
+
+/* "Raptor" ASCII logo ---------------------------------------------------- */
+//                                   .,.                                          
+//                       *******                        *#### (#####              
+//                  ******                          / ########     .#####.        
+//              ,*****                          //////##########   #####  /####   
+//           .*****                           // /////*#####################  ##  
+//         ******                             //// /// ######*      *############ 
+//       ******                               ////// /   ###########,            
+//     .*****                                 ////////     ##################     
+//    ******                                  //////// #                         
+//   *****.                                  ## ////// ###                       
+//  *****,                              #########/ /// #####/                  , 
+// ,*****                           ################ /.######                  
+// *****                       (####################   (#####                  
+// ******                   #####   ########   ////////   ###                   .*
+//,******             .*** ######### #####*   /////////     # /                 *
+// *********    .******* ############ ###### ////////       ////                *
+//  ******************* (############# #####///////      *///// ##              *
+//   ****************** //// ,######### ###  /########       #########          *
+//     ****************  ////////  #####/(       #######.          ####         *
+//                       /////// /////  ##     //    (####           ###       **
+//                        ///// //////////, /////     .####       /*(##       **
+//                       ////// ///////    / ////   ## ###         ,         ,**
+//                     ////////////       // ///      #                     ***.
+//    .              /////////,         ////,/                             ***   
+//                   ///               ......                            ****    
+//       ,           ,///##              /////                         ****.     
+//         *.         // ###              ,/// /                     *****       
+//           ,*       / ####                /*/// ///             *****          
+//              **,    ####( ####             ///// ///        ******            
+//                 ****  ##### #####                      ,*******               
+//                     ******.                      **********                   
+//                           ***************************                         
+
+// ---- Raptor Todo Hub Card - multi-list todo hub (grocery / tasks / rooms) ----
+
 
 const LovelaceView =
   customElements.get("hui-masonry-view") || customElements.get("hui-view");
