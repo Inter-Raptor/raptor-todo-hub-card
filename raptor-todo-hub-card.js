@@ -115,7 +115,6 @@
 
 // ---- Raptor Todo Hub Card - multi-list todo hub (grocery / tasks / rooms) ----
 
-
 const LovelaceView =
   customElements.get("hui-masonry-view") || customElements.get("hui-view");
 const LitElementBase = LovelaceView
@@ -938,6 +937,7 @@ class RaptorTodoHubCard extends LitElementBase {
         flex-wrap: wrap;
         gap: 6px;
         margin-top: 6px;
+        -webkit-tap-highlight-color: transparent;
       }
 
       .tab {
@@ -952,7 +952,7 @@ class RaptorTodoHubCard extends LitElementBase {
         cursor: pointer;
         border: 1px solid transparent;
         min-width: 90px;
-        transition: border-width 0.15s, box-shadow 0.15s, transform 0.15s;
+        transition: border-width 0.15s, box-shadow 0.15s;
       }
 
       .tab-main {
@@ -973,7 +973,6 @@ class RaptorTodoHubCard extends LitElementBase {
       .tab.active {
         border-width: 2px;
         box-shadow: 0 2px 4px rgba(0, 0, 0, 0.25);
-        transform: translateY(-1px);
       }
 
       .tab-progress {
@@ -1353,8 +1352,12 @@ class RaptorTodoHubCard extends LitElementBase {
   // ------------------ GESTION APPUI LONG ------------------
 
   _onItemPointerDown(e, list, item) {
-    // éviter le menu contextuel long clic sur mobile
-    e.preventDefault();
+    // important : on NE bloque PAS les événements tactiles,
+    // sinon le "click" n'est jamais généré sur mobile.
+    if (e.type === "mousedown") {
+      e.preventDefault();
+    }
+
     this._holdActive = false;
 
     if (this._holdTimer) {
