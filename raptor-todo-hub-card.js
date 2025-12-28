@@ -33,7 +33,7 @@
    - Built-in labels for EN / FR / DE / ES
    - Presets are localized (category names per language)
    - language: "en" | "fr" | "de" | "es" (default: "en")
-
+   - NOTE: we also accept "languages" for backward compatibility.
    Typical Lovelace usage:
 
    type: custom:raptor-todo-hub-card
@@ -114,6 +114,10 @@
 //                           ***************************                         
 
 // ---- Raptor Todo Hub Card - multi-list todo hub (grocery / tasks / rooms) ----
+
+
+
+
 
 const LovelaceView =
   customElements.get("hui-masonry-view") || customElements.get("hui-view");
@@ -393,7 +397,7 @@ const RAPTOR_TODO_PRESETS = {
     },
   ],
 
-  // ----- URGENCE : 5 STATUTS -----
+  // ----- URGENCE -----
   urgency: [
     {
       key: "no_due",
@@ -407,7 +411,6 @@ const RAPTOR_TODO_PRESETS = {
       icon: "mdi:calendar-remove-outline",
       color_off: "#9ca3af",
       color_on: "#6b7280",
-      // pas de max_days -> jamais en retard
     },
     {
       key: "long",
@@ -470,7 +473,7 @@ const RAPTOR_TODO_PRESETS = {
     },
   ],
 
-  // ----- TIMEFRAME -----
+  // ----- HORIZON -----
   timeframe: [
     {
       key: "anytime",
@@ -557,7 +560,7 @@ const RAPTOR_TODO_PRESETS = {
     },
   ],
 
-  // ----- PIECES MAISON -----
+  // ----- PIECES -----
   rooms: [
     {
       key: "salon",
@@ -710,8 +713,44 @@ const DEFAULT_PROGRESS_COLORS = [
   { threshold: 90, color: "#3b82f6" }, // bleu
   { threshold: 60, color: "#22c55e" }, // vert
   { threshold: 40, color: "#f97316" }, // orange
-  { threshold: 0, color: "#ef4444" },  // rouge
+  { threshold: 0, color: "#ef4444" }, // rouge
 ];
+
+// ---- UI translations (only UI strings, not your todo content) ----
+const UI_LABELS = {
+  en: {
+    config_missing_lists: "Raptor Todo Hub Card needs a 'lists' field.",
+    default_title: "Tasks & shopping",
+    subtitle: (done, total, percent) =>
+      `${done}/${total} completed (${percent}%)`,
+    active: "ACTIVE",
+    completed: "COMPLETED",
+    empty_active: "No active task 🎉",
+    empty_completed: "No completed task.",
+    add_placeholder: "Add…",
+    add_button: "Add",
+    no_list: "No list configured.",
+    entity_missing: (id) => `Entity not found: ${id}`,
+    confirm_delete: (label) => `Permanently delete this task?\n\n"${label}"`,
+  },
+  fr: {
+    config_missing_lists:
+      "La carte Raptor Todo Hub a besoin d'un champ 'lists'.",
+    default_title: "Tâches & courses",
+    subtitle: (done, total, percent) =>
+      `${done}/${total} tâches terminées (${percent}%)`,
+    active: "ACTIFS",
+    completed: "COMPLÉTÉS",
+    empty_active: "Aucune tâche active 🎉",
+    empty_completed: "Aucune tâche complétée.",
+    add_placeholder: "Ajouter…",
+    add_button: "Ajouter",
+    no_list: "Aucune liste configurée.",
+    entity_missing: (id) => `Entité introuvable : ${id}`,
+    confirm_delete: (label) =>
+      `Supprimer définitivement la tâche :\n\n"${label}" ?`,
+  },
+};
 
 class RaptorTodoHubCard extends LitElementBase {
   static get properties() {
@@ -729,13 +768,17 @@ class RaptorTodoHubCard extends LitElementBase {
 
   setConfig(config) {
     if (!config.lists || !Array.isArray(config.lists) || !config.lists.length) {
-      throw new Error("La carte Raptor Todo Hub a besoin d'un champ 'lists'.");
+      throw new Error(UI_LABELS.fr.config_missing_lists);
     }
 
+    const rawLang = config.language || config.languages || "en";
+    const lang = String(rawLang).toLowerCase().split("-")[0];
+    const langKey = UI_LABELS[lang] ? lang : "en";
+
     this._config = {
-      title: config.title || "Tâches & courses",
+      title: config.title || UI_LABELS[langKey].default_title,
       title_mode: config.title_mode || "static",
-      language: config.language || "en",
+      language: rawLang,
       lists: config.lists,
       progress_colors: config.progress_colors || DEFAULT_PROGRESS_COLORS,
     };
@@ -764,17 +807,18 @@ class RaptorTodoHubCard extends LitElementBase {
   // ------------------ HELPERS LANGUE ------------------
 
   _getLang() {
+    // 1) langue de la config
     if (this._config && this._config.language) {
       return this._normalizeLang(this._config.language);
     }
+
+    // 2) fallback sur la langue HA
     const h = this.hass;
     if (h) {
-      const cand =
-        (h.locale && h.locale.language) ||
-        h.language ||
-        "en";
+      const cand = (h.locale && h.locale.language) || h.language || "en";
       return this._normalizeLang(cand);
     }
+
     return "en";
   }
 
@@ -790,6 +834,13 @@ class RaptorTodoHubCard extends LitElementBase {
     if (cat.labels && cat.labels[lang]) return cat.labels[lang];
     if (cat.label) return cat.label;
     return cat.key || "";
+  }
+
+  _ui(key, ...args) {
+    const lang = this._getLang();
+    const dict = UI_LABELS[lang] || UI_LABELS.en;
+    const val = dict[key] ?? UI_LABELS.en[key];
+    return typeof val === "function" ? val(...args) : val;
   }
 
   // ------------------ HELPERS AUTO-REMOVE ------------------
@@ -859,7 +910,10 @@ class RaptorTodoHubCard extends LitElementBase {
             item: item.uid || item.summary,
           });
         } catch (err) {
-          console.error("RaptorTodoHubCard: erreur remove_item auto (persistant)", err);
+          console.error(
+            "RaptorTodoHubCard: erreur remove_item auto (persistant)",
+            err
+          );
         }
       }
       await this._fetchItemsFor(entityId, true);
@@ -904,7 +958,6 @@ class RaptorTodoHubCard extends LitElementBase {
       :host {
         display: block;
       }
-
       ha-card {
         padding: 16px;
       }
@@ -915,18 +968,15 @@ class RaptorTodoHubCard extends LitElementBase {
         gap: 4px;
         margin-bottom: 8px;
       }
-
       .title-row {
         display: flex;
         justify-content: space-between;
         align-items: center;
       }
-
       .title {
         font-size: 1.2rem;
         font-weight: 600;
       }
-
       .subtitle {
         font-size: 0.85rem;
         color: var(--secondary-text-color);
@@ -939,7 +989,6 @@ class RaptorTodoHubCard extends LitElementBase {
         margin-top: 6px;
         -webkit-tap-highlight-color: transparent;
       }
-
       .tab {
         display: flex;
         flex-direction: column;
@@ -954,22 +1003,18 @@ class RaptorTodoHubCard extends LitElementBase {
         min-width: 90px;
         transition: border-width 0.15s, box-shadow 0.15s;
       }
-
       .tab-main {
         display: inline-flex;
         align-items: center;
         gap: 6px;
       }
-
       .tab ha-icon {
         --mdc-icon-size: 16px;
       }
-
       .tab-count {
         font-size: 0.75rem;
         opacity: 0.7;
       }
-
       .tab.active {
         border-width: 2px;
         box-shadow: 0 2px 4px rgba(0, 0, 0, 0.25);
@@ -982,7 +1027,6 @@ class RaptorTodoHubCard extends LitElementBase {
         background: rgba(0, 0, 0, 0.08);
         overflow: hidden;
       }
-
       .tab-progress-bar {
         height: 100%;
         border-radius: inherit;
@@ -1001,7 +1045,6 @@ class RaptorTodoHubCard extends LitElementBase {
         align-items: center;
         margin: 8px 0 4px;
       }
-
       .add-row input {
         flex: 1;
         border-radius: 999px;
@@ -1011,7 +1054,6 @@ class RaptorTodoHubCard extends LitElementBase {
         background: var(--ha-card-background, #fff);
         color: var(--primary-text-color);
       }
-
       .add-row button {
         border-radius: 999px;
         border: none;
@@ -1028,7 +1070,6 @@ class RaptorTodoHubCard extends LitElementBase {
         gap: 6px;
         margin-bottom: 8px;
       }
-
       .cat-chip {
         padding: 2px 8px;
         border-radius: 999px;
@@ -1042,7 +1083,6 @@ class RaptorTodoHubCard extends LitElementBase {
         letter-spacing: 0.03em;
         border: 1px solid transparent;
       }
-
       .cat-chip.selected {
         opacity: 1;
         border-width: 2px;
@@ -1058,7 +1098,6 @@ class RaptorTodoHubCard extends LitElementBase {
         text-transform: uppercase;
         color: var(--secondary-text-color);
       }
-
       .empty {
         font-size: 0.85rem;
         color: var(--secondary-text-color);
@@ -1071,14 +1110,12 @@ class RaptorTodoHubCard extends LitElementBase {
         gap: 8px;
         padding: 4px 0;
       }
-
       .item-icon {
         cursor: pointer;
         display: inline-flex;
         align-items: center;
         justify-content: center;
       }
-
       .item-main {
         flex: 1;
         display: flex;
@@ -1086,11 +1123,9 @@ class RaptorTodoHubCard extends LitElementBase {
         align-items: center;
         gap: 6px;
       }
-
       .item-label {
         font-size: 0.92rem;
       }
-
       .item-label.completed {
         text-decoration: line-through;
         opacity: 0.7;
@@ -1119,14 +1154,14 @@ class RaptorTodoHubCard extends LitElementBase {
     const list = lists[index] || lists[0];
 
     if (!list) {
-      return html`<ha-card>Aucune liste configurée.</ha-card>`;
+      return html`<ha-card>${this._ui("no_list")}</ha-card>`;
     }
 
     const entityId = list.entity;
     const stateObj = this.hass.states[entityId];
 
     if (!stateObj) {
-      return html`<ha-card>Entité introuvable : ${entityId}</ha-card>`;
+      return html`<ha-card>${this._ui("entity_missing", entityId)}</ha-card>`;
     }
 
     let items = this._itemsByEntity[entityId];
@@ -1149,27 +1184,29 @@ class RaptorTodoHubCard extends LitElementBase {
           <div class="title-row">
             <div class="title">${cardTitle}</div>
             <div class="subtitle">
-              ${done}/${total} tâches terminées (${percent}%)
+              ${this._ui("subtitle", done, total, percent)}
             </div>
           </div>
 
-          <div class="tabs">
-            ${lists.map((l, i) => this._renderTab(l, i))}
-          </div>
+          <div class="tabs">${lists.map((l, i) => this._renderTab(l, i))}</div>
         </div>
 
         <div class="divider"></div>
 
         ${this._renderAddRow(list)}
 
-        <div class="section-label">Actifs (${active.length})</div>
+        <div class="section-label">
+          ${this._ui("active")} (${active.length})
+        </div>
         ${active.length === 0
-          ? html`<div class="empty">Aucune tâche active 🎉</div>`
+          ? html`<div class="empty">${this._ui("empty_active")}</div>`
           : active.map((item) => this._renderItem(list, item, false))}
 
-        <div class="section-label">Complétés (${completed.length})</div>
+        <div class="section-label">
+          ${this._ui("completed")} (${completed.length})
+        </div>
         ${completed.length === 0
-          ? html`<div class="empty">Aucune tâche complétée.</div>`
+          ? html`<div class="empty">${this._ui("empty_completed")}</div>`
           : completed.map((item) => this._renderItem(list, item, true))}
       </ha-card>
     `;
@@ -1178,19 +1215,14 @@ class RaptorTodoHubCard extends LitElementBase {
   _getHeaderTitle(list) {
     const mode = this._config.title_mode || "static";
     if (mode !== "per_list" || !list) {
-      return this._config.title || "Tâches & courses";
+      return this._config.title || UI_LABELS[this._getLang()]?.default_title || UI_LABELS.en.default_title;
     }
 
     const entityId = list.entity;
     const friendly =
       this.hass?.states?.[entityId]?.attributes?.friendly_name || entityId;
 
-    return (
-      list.header_title ||
-      list.label ||
-      list.name ||
-      friendly
-    );
+    return list.header_title || list.label || list.name || friendly;
   }
 
   // ------------------ SOUS-RENDU ------------------
@@ -1274,11 +1306,13 @@ class RaptorTodoHubCard extends LitElementBase {
         <input
           type="text"
           .value=${this._newText || ""}
-          placeholder="Ajouter…"
+          placeholder=${this._ui("add_placeholder")}
           @input=${(e) => (this._newText = e.target.value)}
           @keydown=${(e) => this._onInputKeydown(e, list)}
         />
-        <button @click=${() => this._addItem(list)}>Ajouter</button>
+        <button @click=${() => this._addItem(list)}>
+          ${this._ui("add_button")}
+        </button>
       </div>
 
       ${cats.length && this._newText && this._newText.trim() !== ""
@@ -1313,75 +1347,52 @@ class RaptorTodoHubCard extends LitElementBase {
     const colors = this._getItemColors(list, item, cat, completed);
 
     const icon = cat?.icon || "mdi:checkbox-blank-circle";
-    const catLabel = this._getCategoryLabel(cat);
+    const catLabel = cat ? this._getCategoryLabel(cat) : "";
 
     return html`
-      <div
-        class="item"
-        @mousedown=${(e) => this._onItemPointerDown(e, list, item)}
-        @mouseup=${(e) => this._onItemPointerUp(e)}
-        @mouseleave=${(e) => this._onItemPointerUp(e)}
-        @touchstart=${(e) => this._onItemPointerDown(e, list, item)}
-        @touchend=${(e) => this._onItemPointerUp(e)}
-      >
+      <div class="item">
         <div
           class="item-icon"
-          @click=${() => this._onToggleClick(list, item)}
+          @click=${() => this._toggleItem(list, item)}
+          @pointerdown=${(e) => this._onItemPointerDown(e, list, item)}
+          @pointerup=${() => this._onItemPointerUp()}
+          @pointercancel=${() => this._onItemPointerUp()}
+          @pointerleave=${() => this._onItemPointerUp()}
         >
-          <ha-icon
-            .icon=${icon}
-            style="color:${colors.iconColor};"
-          ></ha-icon>
+          <ha-icon .icon=${icon} style="color:${colors.iconColor};"></ha-icon>
         </div>
+
         <div class="item-main">
           <div class="item-label ${completed ? "completed" : ""}">
             ${labelText}
           </div>
-          ${cat
-            ? html`<span
+
+          ${catLabel
+            ? html`<div
                 class="cat-pill"
                 style="background:${colors.pillColor};"
-                >${catLabel}</span
-              >`
+              >
+                ${catLabel}
+              </div>`
             : ""}
         </div>
       </div>
     `;
   }
 
-  // ------------------ GESTION APPUI LONG ------------------
-
   _onItemPointerDown(e, list, item) {
-    // important : on NE bloque PAS les événements tactiles,
-    // sinon le "click" n'est jamais généré sur mobile.
-    if (e.type === "mousedown") {
-      e.preventDefault();
-    }
-
+    if (this._holdTimer) clearTimeout(this._holdTimer);
     this._holdActive = false;
-
-    if (this._holdTimer) {
-      clearTimeout(this._holdTimer);
-      this._holdTimer = null;
-    }
 
     this._holdTimer = setTimeout(() => {
       this._holdActive = true;
       this._confirmDelete(list, item);
-    }, 600);
+    }, 650);
   }
 
-  _onItemPointerUp(e) {
-    if (this._holdTimer) {
-      clearTimeout(this._holdTimer);
-      this._holdTimer = null;
-    }
-    if (this._holdActive) {
-      // on a déclenché un appui long -> on bloque le clic normal
-      e.preventDefault();
-      e.stopPropagation();
-      this._holdActive = false;
-    }
+  _onItemPointerUp() {
+    if (this._holdTimer) clearTimeout(this._holdTimer);
+    this._holdTimer = null;
   }
 
   async _confirmDelete(list, item) {
@@ -1390,9 +1401,7 @@ class RaptorTodoHubCard extends LitElementBase {
     const cat = this._resolveCategory(this._getCategories(list), withoutAuto);
     const labelText = this._stripCategory(withoutAuto, cat) || raw;
 
-    const ok = window.confirm(
-      `Supprimer définitivement la tâche :\n\n"${labelText}" ?`
-    );
+    const ok = window.confirm(this._ui("confirm_delete", labelText));
     if (!ok) return;
 
     try {
@@ -1406,31 +1415,17 @@ class RaptorTodoHubCard extends LitElementBase {
     }
   }
 
-  _onToggleClick(list, item) {
-    if (this._holdActive) {
-      // si un appui long vient d'être déclenché, on ignore le clic
-      return;
-    }
-    this._toggleItem(list, item);
-  }
-
   // ------------------ CATEGORIES & PRESETS ------------------
 
   _getCategories(list) {
-    const fromPreset = list.preset
-      ? RAPTOR_TODO_PRESETS[list.preset] || []
-      : [];
-
+    const fromPreset = list.preset ? RAPTOR_TODO_PRESETS[list.preset] || [] : [];
     const custom = list.categories || [];
 
     const merged = [...fromPreset];
     custom.forEach((c) => {
       const idx = merged.findIndex((m) => m.key === c.key);
-      if (idx >= 0) {
-        merged[idx] = { ...merged[idx], ...c };
-      } else {
-        merged.push(c);
-      }
+      if (idx >= 0) merged[idx] = { ...merged[idx], ...c };
+      else merged.push(c);
     });
 
     return merged;
@@ -1462,7 +1457,10 @@ class RaptorTodoHubCard extends LitElementBase {
   // ------------------ COULEURS (progress + urgence) ------------------
 
   _getProgressColor(list, percent) {
-    const table = list.progress_colors || this._config.progress_colors || DEFAULT_PROGRESS_COLORS;
+    const table =
+      list.progress_colors ||
+      this._config.progress_colors ||
+      DEFAULT_PROGRESS_COLORS;
     const sorted = [...table].sort((a, b) => b.threshold - a.threshold);
     const entry = sorted.find((e) => percent >= e.threshold);
     return entry ? entry.color : "#22c55e";
@@ -1486,9 +1484,7 @@ class RaptorTodoHubCard extends LitElementBase {
 
     const maxDays = cat.max_days;
     const warnStart =
-      typeof cat.warning_start_days === "number"
-        ? cat.warning_start_days
-        : 0;
+      typeof cat.warning_start_days === "number" ? cat.warning_start_days : 0;
 
     if (maxDays && diffDays >= maxDays) return 2;
     if (warnStart && diffDays >= warnStart) return 1;
@@ -1531,12 +1527,8 @@ class RaptorTodoHubCard extends LitElementBase {
       if (worstLevel === 2) break;
     }
 
-    if (worstLevel === 2) {
-      return list.urgency_overdue_color || "#ef4444";
-    }
-    if (worstLevel === 1) {
-      return list.urgency_warning_color || "#f97316";
-    }
+    if (worstLevel === 2) return list.urgency_overdue_color || "#ef4444";
+    if (worstLevel === 1) return list.urgency_warning_color || "#f97316";
     return null;
   }
 
@@ -1565,7 +1557,11 @@ class RaptorTodoHubCard extends LitElementBase {
         await this._processAutoRemovalsForEntity(entityId, items);
       }
     } catch (err) {
-      console.error("Raptor Todo Hub Card: erreur todo/item/list pour", entityId, err);
+      console.error(
+        "Raptor Todo Hub Card: erreur todo/item/list pour",
+        entityId,
+        err
+      );
     }
   }
 
@@ -1643,12 +1639,8 @@ class RaptorTodoHubCard extends LitElementBase {
   static getStubConfig() {
     return {
       title: "Tâches & courses",
-      lists: [
-        {
-          entity: "todo.liste_de_course",
-          label: "Courses",
-        },
-      ],
+      language: "fr",
+      lists: [{ entity: "todo.liste_de_course", label: "Courses" }],
     };
   }
 }
@@ -1656,7 +1648,7 @@ class RaptorTodoHubCard extends LitElementBase {
 customElements.define("raptor-todo-hub-card", RaptorTodoHubCard);
 
 console.info(
-  "%cRaptor Todo Hub Card%c chargé (auto-remove persistant, compat. HA récent)",
+  "%cRaptor Todo Hub Card%c loaded",
   "color: white; background:#22c55e; padding:2px 6px; border-radius:4px;",
   "color:#22c55e;"
 );
