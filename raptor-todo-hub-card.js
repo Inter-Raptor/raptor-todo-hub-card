@@ -118,7 +118,6 @@
 
 
 
-
 const LovelaceView =
   customElements.get("hui-masonry-view") || customElements.get("hui-view");
 const LitElementBase = LovelaceView
@@ -716,13 +715,16 @@ const DEFAULT_PROGRESS_COLORS = [
   { threshold: 0, color: "#ef4444" }, // rouge
 ];
 
+// couleur neutre (listes vides)
+const DEFAULT_EMPTY_LIST_COLOR = "#9ca3af";
+
 // ---- UI translations (only UI strings, not your todo content) ----
 const UI_LABELS = {
   en: {
     config_missing_lists: "Raptor Todo Hub Card needs a 'lists' field.",
     default_title: "Tasks & shopping",
-    subtitle: (done, total, percent) =>
-      `${done}/${total} completed (${percent}%)`,
+    subtitle: (done, total, percent, isEmpty) =>
+      isEmpty ? "No tasks in this list." : `${done}/${total} completed (${percent}%)`,
     active: "ACTIVE",
     completed: "COMPLETED",
     empty_active: "No active task 🎉",
@@ -732,13 +734,14 @@ const UI_LABELS = {
     no_list: "No list configured.",
     entity_missing: (id) => `Entity not found: ${id}`,
     confirm_delete: (label) => `Permanently delete this task?\n\n"${label}"`,
+    due_prefix: "Due",
   },
   fr: {
     config_missing_lists:
       "La carte Raptor Todo Hub a besoin d'un champ 'lists'.",
     default_title: "Tâches & courses",
-    subtitle: (done, total, percent) =>
-      `${done}/${total} tâches terminées (${percent}%)`,
+    subtitle: (done, total, percent, isEmpty) =>
+      isEmpty ? "Aucune tâche dans cette liste." : `${done}/${total} tâches terminées (${percent}%)`,
     active: "ACTIFS",
     completed: "COMPLÉTÉS",
     empty_active: "Aucune tâche active 🎉",
@@ -749,6 +752,7 @@ const UI_LABELS = {
     entity_missing: (id) => `Entité introuvable : ${id}`,
     confirm_delete: (label) =>
       `Supprimer définitivement la tâche :\n\n"${label}" ?`,
+    due_prefix: "Échéance",
   },
 };
 
@@ -807,18 +811,14 @@ class RaptorTodoHubCard extends LitElementBase {
   // ------------------ HELPERS LANGUE ------------------
 
   _getLang() {
-    // 1) langue de la config
     if (this._config && this._config.language) {
       return this._normalizeLang(this._config.language);
     }
-
-    // 2) fallback sur la langue HA
     const h = this.hass;
     if (h) {
       const cand = (h.locale && h.locale.language) || h.language || "en";
       return this._normalizeLang(cand);
     }
-
     return "en";
   }
 
@@ -941,7 +941,7 @@ class RaptorTodoHubCard extends LitElementBase {
     }
     await this.hass.callService("todo", "add_item", addData);
 
-    // 3) remettre le statut souhaité (si différent du défaut needs_action)
+    // 3) remettre le statut souhaité
     if (status && status !== "needs_action") {
       await this.hass.callService("todo", "update_item", {
         entity_id: entityId,
@@ -949,6 +949,117 @@ class RaptorTodoHubCard extends LitElementBase {
         status: status,
       });
     }
+  }
+
+  // ------------------ HELPERS DUE (sort_by: due / show_due_date) ------------------
+
+  _getItemDueDate(item) {
+    const dueStr = item?.due || item?.due_date;
+    if (!dueStr) return null;
+    const d = new Date(dueStr);
+    if (Number.isNaN(d.getTime())) return null;
+    return d;
+  }
+
+  _hasMeaningfulTime(dueStr) {
+    if (!dueStr || typeof dueStr !== "string") return false;
+    if (!dueStr.includes("T")) return false;
+    const d = new Date(dueStr);
+    if (Number.isNaN(d.getTime())) return false;
+    return !(d.getHours() === 0 && d.getMinutes() === 0 && d.getSeconds() === 0);
+  }
+
+  _formatDue(item) {
+    const dueStr = item?.due || item?.due_date;
+    const d = this._getItemDueDate(item);
+    if (!d) return "";
+
+    const lang = this._getLang();
+    const locale = this.hass?.locale?.language ? this.hass.locale.language : lang;
+
+    const includeTime = this._hasMeaningfulTime(dueStr);
+    const opts = includeTime
+      ? { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }
+      : { year: "numeric", month: "2-digit", day: "2-digit" };
+
+    try {
+      return new Intl.DateTimeFormat(locale, opts).format(d);
+    } catch (_e) {
+      return d.toLocaleString();
+    }
+  }
+
+  // ------------------ TRI (sort_by) ------------------
+
+  // Tri par urgence (preset: urgency) selon ordre A:
+  // URGENT → SOON → NORMAL → LONG TERM → NO DUE
+  _getUrgencyRank(list, item) {
+    const summary = this._stripAutoRemoveMeta(item?.summary || "");
+    const cats = this._getCategories(list);
+    const cat = this._resolveCategory(cats, summary);
+    if (!cat) return 999;
+
+    const key = String(cat.key || "").toLowerCase();
+
+    // mapping basé sur les keys du preset "urgency"
+    const map = {
+      urgent: 0,
+      bientot: 1,
+      normal: 2,
+      long: 3,
+      no_due: 4,
+    };
+
+    if (map[key] === undefined) return 998;
+    return map[key];
+  }
+
+  _sortItemsForList(list, items) {
+    const mode = (list && list.sort_by) || "none";
+    if (!items || items.length <= 1) return items || [];
+
+    // 1) Tri par date d'échéance HA
+    if (mode === "due") {
+      const arr = [...items];
+      arr.sort((a, b) => {
+        const da = this._getItemDueDate(a);
+        const db = this._getItemDueDate(b);
+        if (!da && !db) return String(a.summary || "").localeCompare(String(b.summary || ""));
+        if (!da) return 1;
+        if (!db) return -1;
+        const diff = da.getTime() - db.getTime();
+        if (diff !== 0) return diff;
+        return String(a.summary || "").localeCompare(String(b.summary || ""));
+      });
+      return arr;
+    }
+
+    // 2) Tri par urgence (tags/catégories), ordre A
+    if (mode === "urgency") {
+      const arr = [...items];
+      arr.sort((a, b) => {
+        const ra = this._getUrgencyRank(list, a);
+        const rb = this._getUrgencyRank(list, b);
+        if (ra !== rb) return ra - rb;
+
+        // Si même urgence: due d'abord si présent, sinon texte
+        const da = this._getItemDueDate(a);
+        const db = this._getItemDueDate(b);
+        if (da && db) {
+          const diff = da.getTime() - db.getTime();
+          if (diff !== 0) return diff;
+        } else if (da && !db) {
+          return -1;
+        } else if (!da && db) {
+          return 1;
+        }
+
+        return String(a.summary || "").localeCompare(String(b.summary || ""));
+      });
+      return arr;
+    }
+
+    return items;
   }
 
   // ------------------ STYLES ------------------
@@ -1141,6 +1252,17 @@ class RaptorTodoHubCard extends LitElementBase {
         text-transform: uppercase;
         letter-spacing: 0.03em;
       }
+
+      /* due badge */
+      .due-pill {
+        padding: 2px 6px;
+        border-radius: 999px;
+        font-size: 0.7rem;
+        font-weight: 600;
+        color: var(--primary-text-color);
+        background: rgba(0, 0, 0, 0.08);
+        letter-spacing: 0.01em;
+      }
     `;
   }
 
@@ -1170,11 +1292,17 @@ class RaptorTodoHubCard extends LitElementBase {
       items = [];
     }
 
-    const active = items.filter((it) => it.status !== "completed");
-    const completed = items.filter((it) => it.status === "completed");
+    // Tri optionnel
+    const activeRaw = items.filter((it) => it.status !== "completed");
+    const completedRaw = items.filter((it) => it.status === "completed");
+    const active = this._sortItemsForList(list, activeRaw);
+    const completed = this._sortItemsForList(list, completedRaw);
+
     const total = items.length;
-    const done = completed.length;
-    const percent = total ? Math.round((done / total) * 100) : 0;
+    const done = completedRaw.length;
+
+    const isEmptyList = total === 0;
+    const percent = total ? Math.round((done / total) * 100) : null;
 
     const cardTitle = this._getHeaderTitle(list);
 
@@ -1184,7 +1312,7 @@ class RaptorTodoHubCard extends LitElementBase {
           <div class="title-row">
             <div class="title">${cardTitle}</div>
             <div class="subtitle">
-              ${this._ui("subtitle", done, total, percent)}
+              ${this._ui("subtitle", done, total, percent ?? 0, isEmptyList)}
             </div>
           </div>
 
@@ -1215,7 +1343,11 @@ class RaptorTodoHubCard extends LitElementBase {
   _getHeaderTitle(list) {
     const mode = this._config.title_mode || "static";
     if (mode !== "per_list" || !list) {
-      return this._config.title || UI_LABELS[this._getLang()]?.default_title || UI_LABELS.en.default_title;
+      return (
+        this._config.title ||
+        UI_LABELS[this._getLang()]?.default_title ||
+        UI_LABELS.en.default_title
+      );
     }
 
     const entityId = list.entity;
@@ -1240,7 +1372,8 @@ class RaptorTodoHubCard extends LitElementBase {
     const completed = items.filter((it) => it.status === "completed");
     const total = items.length;
     const done = completed.length;
-    const percent = total ? Math.round((done / total) * 100) : 0;
+
+    const percent = total ? Math.round((done / total) * 100) : null;
 
     const isActive = index === this._activeIndex;
     const label =
@@ -1270,6 +1403,7 @@ class RaptorTodoHubCard extends LitElementBase {
     }
 
     const showBar = list.show_progress_bar !== false;
+    const widthPercent = percent == null ? 0 : percent;
 
     return html`
       <div
@@ -1287,7 +1421,7 @@ class RaptorTodoHubCard extends LitElementBase {
               <div class="tab-progress">
                 <div
                   class="tab-progress-bar"
-                  style="width:${percent}%; background:${progressColor};"
+                  style="width:${widthPercent}%; background:${progressColor};"
                 ></div>
               </div>
             `
@@ -1349,6 +1483,9 @@ class RaptorTodoHubCard extends LitElementBase {
     const icon = cat?.icon || "mdi:checkbox-blank-circle";
     const catLabel = cat ? this._getCategoryLabel(cat) : "";
 
+    const showDue = list.show_due_date === true;
+    const dueText = showDue ? this._formatDue(item) : "";
+
     return html`
       <div class="item">
         <div
@@ -1368,11 +1505,14 @@ class RaptorTodoHubCard extends LitElementBase {
           </div>
 
           ${catLabel
-            ? html`<div
-                class="cat-pill"
-                style="background:${colors.pillColor};"
-              >
+            ? html`<div class="cat-pill" style="background:${colors.pillColor};">
                 ${catLabel}
+              </div>`
+            : ""}
+
+          ${dueText
+            ? html`<div class="due-pill">
+                ${this._ui("due_prefix")}: ${dueText}
               </div>`
             : ""}
         </div>
@@ -1457,6 +1597,11 @@ class RaptorTodoHubCard extends LitElementBase {
   // ------------------ COULEURS (progress + urgence) ------------------
 
   _getProgressColor(list, percent) {
+    // liste vide => couleur neutre
+    if (percent == null) {
+      return list.empty_list_color || DEFAULT_EMPTY_LIST_COLOR;
+    }
+
     const table =
       list.progress_colors ||
       this._config.progress_colors ||
