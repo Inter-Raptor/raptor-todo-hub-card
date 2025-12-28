@@ -725,3 +725,183 @@ License: see `LICENSE` file in the repository (or specify your preferred OSS lic
 
 Thanks for using **Raptor Todo Hub Card** 💚  
 If you like it, consider leaving a ⭐ on the GitHub repo!
+
+
+
+
+
+
+---
+
+---
+
+## 🌍 Internationalization (i18n)
+
+The card supports UI internationalization via the `language` option.
+
+Supported languages:
+- `fr`
+- `en`
+
+Only **UI labels** are translated (Add / Active / Completed / subtitle, etc.).  
+**Task titles and data are never modified or translated.**
+
+### 🎞️ Language demo (same data, different UI language)
+
+![FR/EN UI demo](./traductodo.gif)
+
+---
+
+### 🇫🇷 Example configuration (French UI)
+
+```yaml
+type: custom:raptor-todo-hub-card
+title: Tâches & courses
+language: fr
+progress_colors:
+  - threshold: 90
+    color: "#3b82f6"
+  - threshold: 60
+    color: "#22c55e"
+  - threshold: 40
+    color: "#f97316"
+  - threshold: 0
+    color: "#ef4444"
+lists:
+  - entity: todo.liste_de_course
+    label: Courses
+    icon: mdi:cart
+    preset: grocery
+    default_category: epicerie
+    color_mode: category
+    auto_remove_completed_seconds: 0
+
+  - entity: todo.maison
+    label: Maison
+    icon: mdi:home-outline
+    preset: urgency
+    default_category: normal
+    color_mode: urgency_age
+    urgency_warning_color: "#f97316"
+    urgency_overdue_color: "#ef4444"
+    auto_remove_completed_seconds: 86400
+    categories:
+      - key: urgent
+        match: "#urg"
+        label: Urgent
+        icon: mdi:alert
+        color_off: "#9ca3af"
+        color_on: "#ef4444"
+        max_days: 2
+      - key: bientot
+        match: "#soon"
+        label: Bientôt
+        icon: mdi:clock-outline
+        color_off: "#9ca3af"
+        color_on: "#f59e0b"
+        max_days: 4
+      - key: normal
+        match: "#norm"
+        label: Normal
+        icon: mdi:checkbox-blank-circle
+        color_off: "#9ca3af"
+        color_on: "#22c55e"
+        max_days: 999
+
+  - entity: todo.choses_a_faire_myriam
+    label: Myriam
+    icon: mdi:account-multiple
+    preset: rooms
+    default_category: salon
+    color_mode: category
+
+  - entity: todo.choses_a_faire_vivien
+    label: Vivien
+    icon: mdi:account
+    preset: rooms
+    default_category: garage
+    categories:
+      - key: garage
+        match: "#garage"
+        label: Garage
+        icon: mdi:garage
+        color_off: "#9ca3af"
+        color_on: "#f97316"
+
+
+### 🇬🇧 Example configuration (English UI)
+type: custom:raptor-todo-hub-card
+title: Tasks and errands
+language: en
+progress_colors:
+  - threshold: 90
+    color: "#3b82f6"
+  - threshold: 60
+    color: "#22c55e"
+  - threshold: 40
+    color: "#f97316"
+  - threshold: 0
+    color: "#ef4444"
+lists:
+  - entity: todo.liste_de_course
+    label: Courses
+    icon: mdi:cart
+    preset: grocery
+    default_category: epicerie
+    color_mode: category
+    auto_remove_completed_seconds: 0
+
+  - entity: todo.maison
+    label: Maison
+    icon: mdi:home-outline
+    preset: urgency
+    default_category: normal
+    color_mode: urgency_age
+    urgency_warning_color: "#f97316"
+    urgency_overdue_color: "#ef4444"
+    auto_remove_completed_seconds: 86400
+    categories:
+      - key: urgent
+        match: "#urg"
+        label: Urgent
+        icon: mdi:alert
+        color_off: "#9ca3af"
+        color_on: "#ef4444"
+        max_days: 2
+      - key: bientot
+        match: "#soon"
+        label: Bientôt
+        icon: mdi:clock-outline
+        color_off: "#9ca3af"
+        color_on: "#f59e0b"
+        max_days: 4
+      - key: normal
+        match: "#norm"
+        label: Normal
+        icon: mdi:checkbox-blank-circle
+        color_off: "#9ca3af"
+        color_on: "#22c55e"
+        max_days: 999
+
+  - entity: todo.choses_a_faire_myriam
+    label: Myriam
+    icon: mdi:account-multiple
+    preset: rooms
+    default_category: salon
+    color_mode: category
+
+  - entity: todo.choses_a_faire_vivien
+    label: Vivien
+    icon: mdi:account
+    preset: rooms
+    default_category: garage
+    categories:
+      - key: garage
+        match: "#garage"
+        label: Garage
+        icon: mdi:garage
+        color_off: "#9ca3af"
+        color_on: "#f97316"
+
+
+
