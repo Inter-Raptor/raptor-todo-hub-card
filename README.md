@@ -26,6 +26,14 @@
 - **Progress bar per tab**
   - color based on completion percentage
   - or based on worst urgency in the list
+- **Optional task sorting (NEW)**
+  - `sort_by: due` → sort by real Home Assistant due date (`item.due` / `item.due_date`)
+  - `sort_by: urgency` → sort by urgency tags in this order: **URGENT → SOON → NORMAL → LONG TERM → NO DUE**
+- **Optional due date display (NEW)**
+  - `show_due_date: true` (only shows if the item has a due date)
+- **Neutral color for empty lists (NEW)**
+  - `empty_list_color` (prevents empty lists from showing as “0% red”)
+
 - **Long-press to delete** with confirmation
 - **Language-aware labels** (en / fr / de / es)
 - Fully compatible with **recent Home Assistant todo services**
@@ -69,6 +77,16 @@
 - Quick overview per area in the house
 
 ![Rooms categories demo](raptor-todo-hub-room-categories.gif)
+
+---
+
+### Sorting demo – due date or urgency (NEW)
+
+- `sort_by: due` sorts by real HA due date (`item.due` / `item.due_date`)
+- `sort_by: urgency` sorts by tags in this order: **URGENT → SOON → NORMAL → LONG TERM → NO DUE**
+- Sorting applies independently to **ACTIVE** and **COMPLETED** sections
+
+![Sorting demo – due / urgency](trieetcomplTODO.gif)
 
 ---
 
@@ -281,6 +299,26 @@ lists:
 | `progress_colors`             | array    | global default | Per-list override for the progress bar color thresholds |
 
 ---
+
+
+---
+
+# 5.2. Sorting tasks (NEW)
+
+Sorting is configured **per list** using `sort_by`:
+
+- `sort_by: none` (default) → keep backend order
+- `sort_by: due` → sort by real Home Assistant due date (`item.due` / `item.due_date`)
+- `sort_by: urgency` → sort by urgency tags (best with `preset: urgency`)
+
+Urgency order is fixed:
+
+**URGENT → SOON → NORMAL → LONG TERM → NO DUE**
+
+Notes:
+- Sorting is applied separately to **ACTIVE** and **COMPLETED** sections.
+- `sort_by: due` requires a real due date; tags like `#urg` do **not** count as a due date.
+- `show_due_date: true` only displays when the item has a due date.
 
 # 6. Categories & presets
 
@@ -829,7 +867,12 @@ lists:
         color_on: "#f97316"
 
 
+
+```
+
 ### 🇬🇧 Example configuration (English UI)
+
+```yaml
 type: custom:raptor-todo-hub-card
 title: Tasks and errands
 language: en
@@ -902,6 +945,4 @@ lists:
         icon: mdi:garage
         color_off: "#9ca3af"
         color_on: "#f97316"
-
-
-
+```
